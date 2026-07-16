@@ -61,6 +61,7 @@ export default function ExpensesPage() {
   const [yearTotals, setYearTotals] = useState<Record<string, number>>({});
   const [draft, setDraft] = useState({
     category: "bescom" as ExpenseCategory,
+    bill_date: todayISO(),
     expense_date: todayISO(),
     amount: "",
     description: "",
@@ -76,15 +77,15 @@ export default function ExpensesPage() {
         supabase
           .from("expenses")
           .select("*")
-          .gte("expense_date", p)
-          .lt("expense_date", nextPeriodOf(p))
-          .order("expense_date", { ascending: false })
+          .gte("bill_date", p)
+          .lt("bill_date", nextPeriodOf(p))
+          .order("bill_date", { ascending: false })
           .order("id", { ascending: false }),
         supabase
           .from("expenses")
           .select("category, amount")
-          .gte("expense_date", `${p.slice(0, 4)}-01-01`)
-          .lt("expense_date", `${Number(p.slice(0, 4)) + 1}-01-01`),
+          .gte("bill_date", `${p.slice(0, 4)}-01-01`)
+          .lt("bill_date", `${Number(p.slice(0, 4)) + 1}-01-01`),
       ]);
       setExpenses((monthRows ?? []) as Expense[]);
       const totals: Record<string, number> = {};
@@ -136,6 +137,7 @@ export default function ExpensesPage() {
     } = await supabase.auth.getUser();
     const { error } = await supabase.from("expenses").insert({
       category: draft.category,
+      bill_date: draft.bill_date,
       expense_date: draft.expense_date,
       amount: Number(draft.amount) || 0,
       description: draft.description || null,
@@ -205,7 +207,7 @@ export default function ExpensesPage() {
 
       <Card title="Record an expense">
         <form onSubmit={addExpense}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <Field label="Category">
               <select
                 value={draft.category}
@@ -223,6 +225,17 @@ export default function ExpensesPage() {
                   </option>
                 ))}
               </select>
+            </Field>
+            <Field label="Bill date">
+              <input
+                type="date"
+                required
+                value={draft.bill_date}
+                onChange={(e) =>
+                  setDraft((d) => ({ ...d, bill_date: e.target.value }))
+                }
+                className={inputCls}
+              />
             </Field>
             <Field label="Payment date">
               <input
@@ -299,8 +312,9 @@ export default function ExpensesPage() {
           <TableWrap>
             <thead>
               <tr>
-                <th className={thCls}>Date</th>
                 <th className={thCls}>Category</th>
+                <th className={thCls}>Bill date</th>
+                <th className={thCls}>Paid on</th>
                 <th className={thCls}>Description</th>
                 <th className={`${thCls} text-right`}>Amount</th>
                 <th className={thCls}>Bill</th>
@@ -310,10 +324,11 @@ export default function ExpensesPage() {
             <tbody>
               {expenses.map((exp) => (
                 <tr key={exp.id}>
-                  <td className={tdCls}>{formatDate(exp.expense_date)}</td>
                   <td className={`${tdCls} font-medium`}>
                     {catLabel(exp.category)}
                   </td>
+                  <td className={tdCls}>{formatDate(exp.bill_date)}</td>
+                  <td className={tdCls}>{formatDate(exp.expense_date)}</td>
                   <td className={`${tdCls} !whitespace-normal text-slate-600`}>
                     {exp.description ?? "—"}
                   </td>
@@ -340,7 +355,7 @@ export default function ExpensesPage() {
                 </tr>
               ))}
               <tr className="bg-slate-50">
-                <td className={`${tdCls} font-bold`} colSpan={3}>
+                <td className={`${tdCls} font-bold`} colSpan={4}>
                   Total — {formatPeriod(period)}
                 </td>
                 <td className={`${tdCls} text-right font-bold`}>
