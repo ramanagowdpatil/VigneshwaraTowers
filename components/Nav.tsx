@@ -12,13 +12,14 @@ const ALL_ITEMS = [
   { href: "/readings", label: "Readings" },
   { href: "/rents", label: "Rents" },
   { href: "/bills", label: "Bills" },
+  { href: "/expenses", label: "Expenses" },
   { href: "/invoices", label: "Invoices" },
   { href: "/setup", label: "Setup" },
 ];
 
 // Which tabs each role can see
 const NAV_BY_ROLE: Record<UserRole, string[]> = {
-  admin: ["/", "/readings", "/rents", "/bills", "/invoices", "/setup"],
+  admin: ["/", "/readings", "/rents", "/bills", "/expenses", "/invoices", "/setup"],
   editor: ["/readings"],
   viewer: ["/", "/readings", "/rents", "/invoices"],
 };

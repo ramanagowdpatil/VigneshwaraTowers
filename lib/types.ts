@@ -1,5 +1,26 @@
 export type UserRole = "admin" | "editor" | "viewer";
 
+export type ExpenseCategory =
+  | "bescom"
+  | "bwssb"
+  | "diesel"
+  | "security_salary"
+  | "lift_amc"
+  | "dg_amc"
+  | "bbmp"
+  | "other";
+
+export interface Expense {
+  id: number;
+  category: ExpenseCategory;
+  expense_date: string;
+  amount: number;
+  description: string | null;
+  attachment_path: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
 export interface Profile {
   id: string;
   full_name: string | null;
