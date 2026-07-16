@@ -14,8 +14,23 @@ import {
   thCls,
   tdCls,
 } from "@/components/ui";
-import { todayISO, formatDate } from "@/lib/utils";
+import {
+  todayISO,
+  formatDate,
+  currentPeriod,
+  monthToPeriod,
+  periodToMonth,
+  formatPeriod,
+} from "@/lib/utils";
 import type { Meter, MeterReading } from "@/lib/types";
+
+/** First day of the month after the given period ("2026-07-01" -> "2026-08-01") */
+function nextPeriodOf(p: string): string {
+  const [y, m] = p.split("-").map(Number);
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  return `${ny}-${String(nm).padStart(2, "0")}-01`;
+}
 
 const KIND_LABEL: Record<string, string> = {
   electric: "Electricity meters (KWh)",
@@ -33,6 +48,11 @@ export default function ReadingsPage() {
   const [values, setValues] = useState<Record<number, string>>({});
   const [previous, setPrevious] = useState<Record<number, MeterReading>>({});
   const [recent, setRecent] = useState<MeterReading[]>([]);
+  // Monthly consumption: reading on 1st of next month minus 1st of this month
+  const [consMonth, setConsMonth] = useState(currentPeriod());
+  const [consReadings, setConsReadings] = useState<
+    Record<number, { start?: number; end?: number }>
+  >({});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ kind: "success" | "error"; text: string } | null>(null);
 
@@ -61,6 +81,25 @@ export default function ReadingsPage() {
         if (!prev[r.meter_id]) prev[r.meter_id] = r;
       });
       setPrevious(prev);
+    },
+    [supabase]
+  );
+
+  const loadConsumption = useCallback(
+    async (p: string) => {
+      const d1 = p;
+      const d2 = nextPeriodOf(p);
+      const { data } = await supabase
+        .from("meter_readings")
+        .select("meter_id, reading_date, reading")
+        .in("reading_date", [d1, d2]);
+      const map: Record<number, { start?: number; end?: number }> = {};
+      (data ?? []).forEach((r) => {
+        map[r.meter_id] ??= {};
+        if (r.reading_date === d1) map[r.meter_id].start = Number(r.reading);
+        else map[r.meter_id].end = Number(r.reading);
+      });
+      setConsReadings(map);
     },
     [supabase]
   );
@@ -95,8 +134,15 @@ export default function ReadingsPage() {
       setMeters(list);
       await loadForDate(list, todayISO());
       await loadRecent();
+      await loadConsumption(currentPeriod());
     })();
-  }, [supabase, loadForDate, loadRecent, role, tenantIds]);
+  }, [supabase, loadForDate, loadRecent, loadConsumption, role, tenantIds]);
+
+  async function changeConsMonth(month: string) {
+    const p = monthToPeriod(month);
+    setConsMonth(p);
+    await loadConsumption(p);
+  }
 
   async function changeDate(d: string) {
     setDate(d);
@@ -128,6 +174,7 @@ export default function ReadingsPage() {
       setMsg({ kind: "success", text: `Saved ${rows.length} reading(s) for ${formatDate(date)}.` });
       await loadRecent();
       await loadForDate(meters, date);
+      await loadConsumption(consMonth);
     }
     setSaving(false);
   }
@@ -211,6 +258,80 @@ export default function ReadingsPage() {
             You have view-only access. Readings can be entered by the editor or admin.
           </p>
         )}
+      </Card>
+
+      <Card title="Monthly consumption">
+        <div className="max-w-xs mb-3">
+          <Field label="Month">
+            <input
+              type="month"
+              value={periodToMonth(consMonth)}
+              onChange={(e) => changeConsMonth(e.target.value)}
+              className={inputCls}
+            />
+          </Field>
+        </div>
+        <TableWrap>
+          <thead>
+            <tr>
+              <th className={thCls}>Meter</th>
+              <th className={thCls}>
+                Reading on {formatDate(consMonth)}
+              </th>
+              <th className={thCls}>
+                Reading on {formatDate(nextPeriodOf(consMonth))}
+              </th>
+              <th className={`${thCls} text-right`}>
+                Consumption — {formatPeriod(consMonth)}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {meters.map((m) => {
+              const r = consReadings[m.id] ?? {};
+              const hasBoth = r.start !== undefined && r.end !== undefined;
+              const diff = hasBoth ? (r.end as number) - (r.start as number) : null;
+              return (
+                <tr key={m.id}>
+                  <td className={`${tdCls} font-medium`}>
+                    {m.name}
+                    <span className="ml-1 text-xs font-normal text-slate-400">
+                      {m.kind === "electric" ? "kWh" : m.kind === "dg" ? "hrs/kWh" : ""}
+                    </span>
+                  </td>
+                  <td className={tdCls}>
+                    {r.start !== undefined ? (
+                      r.start.toLocaleString("en-IN")
+                    ) : (
+                      <span className="text-xs text-slate-400">not recorded</span>
+                    )}
+                  </td>
+                  <td className={tdCls}>
+                    {r.end !== undefined ? (
+                      r.end.toLocaleString("en-IN")
+                    ) : (
+                      <span className="text-xs text-slate-400">not recorded</span>
+                    )}
+                  </td>
+                  <td
+                    className={`${tdCls} text-right font-semibold ${
+                      diff !== null && diff < 0 ? "text-red-600" : ""
+                    }`}
+                  >
+                    {diff !== null
+                      ? diff.toLocaleString("en-IN", { maximumFractionDigits: 2 })
+                      : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </TableWrap>
+        <p className="text-xs text-slate-400 mt-2">
+          Consumption for a month = reading on the 1st of the next month minus
+          reading on the 1st of that month. A negative value usually means a
+          reading was entered incorrectly.
+        </p>
       </Card>
 
       <Card title="Recent readings">
