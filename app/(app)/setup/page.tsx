@@ -15,6 +15,7 @@ import {
   tdCls,
 } from "@/components/ui";
 import { formatINR, formatDate } from "@/lib/utils";
+import { displayLogin } from "@/lib/auth";
 import type { Unit, Tenant, Lease, Profile, UserRole } from "@/lib/types";
 
 export default function SetupPage() {
@@ -28,6 +29,13 @@ export default function SetupPage() {
   const [profileTenants, setProfileTenants] = useState<
     { profile_id: string; tenant_id: number }[]
   >([]);
+  const [myUserId, setMyUserId] = useState<string | null>(null);
+  const [newUser, setNewUser] = useState({
+    username: "",
+    password: "",
+    role: "viewer" as UserRole,
+  });
+  const [creatingUser, setCreatingUser] = useState(false);
   const [areaDrafts, setAreaDrafts] = useState<Record<number, string>>({});
   const [addressDrafts, setAddressDrafts] = useState<Record<number, string>>({});
   const EMPTY_LEASE = {
@@ -74,7 +82,74 @@ export default function SetupPage() {
     setProfileTenants(
       (pt.data ?? []) as { profile_id: string; tenant_id: number }[]
     );
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    setMyUserId(user?.id ?? null);
   }, [supabase]);
+
+  async function createUser(e: React.FormEvent) {
+    e.preventDefault();
+    setMsg(null);
+    setCreatingUser(true);
+    const res = await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newUser),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      setMsg({ kind: "error", text: body.error ?? "Could not create user." });
+      setCreatingUser(false);
+      return;
+    }
+    setMsg({
+      kind: "success",
+      text: `User "${newUser.username}" created — they can sign in with that username and the password you set.`,
+    });
+    setNewUser({ username: "", password: "", role: "viewer" });
+    setCreatingUser(false);
+    await loadAll();
+  }
+
+  async function resetPassword(p: Profile) {
+    const pw = window.prompt(
+      `New password for ${displayLogin(p.full_name ?? "")} (min 8 characters):`
+    );
+    if (!pw) return;
+    setMsg(null);
+    const res = await fetch("/api/users", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: p.id, password: pw }),
+    });
+    const body = await res.json();
+    setMsg(
+      res.ok
+        ? { kind: "success", text: "Password updated." }
+        : { kind: "error", text: body.error ?? "Could not update password." }
+    );
+  }
+
+  async function deleteUser(p: Profile) {
+    const ok = window.confirm(
+      `Delete the account "${displayLogin(p.full_name ?? "")}"? They will no longer be able to sign in.`
+    );
+    if (!ok) return;
+    setMsg(null);
+    const res = await fetch("/api/users", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: p.id }),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      setMsg({ kind: "error", text: body.error ?? "Could not delete user." });
+      return;
+    }
+    setMsg({ kind: "success", text: "User deleted." });
+    await loadAll();
+  }
 
   useEffect(() => {
     loadAll();
@@ -446,15 +521,23 @@ export default function SetupPage() {
         <TableWrap>
           <thead>
             <tr>
-              <th className={thCls}>Name</th>
+              <th className={thCls}>Login</th>
               <th className={thCls}>Role</th>
               <th className={thCls}>Visible tenants (viewer only)</th>
+              <th className={thCls}>Actions</th>
             </tr>
           </thead>
           <tbody>
             {profiles.map((p) => (
               <tr key={p.id}>
-                <td className={`${tdCls} font-medium`}>{p.full_name}</td>
+                <td className={`${tdCls} font-medium`}>
+                  {displayLogin(p.full_name ?? "")}
+                  {p.id === myUserId && (
+                    <span className="ml-1 text-xs font-normal text-slate-400">
+                      (you)
+                    </span>
+                  )}
+                </td>
                 <td className={tdCls}>
                   <select
                     value={p.role}
@@ -505,10 +588,85 @@ export default function SetupPage() {
                     </span>
                   )}
                 </td>
+                <td className={tdCls}>
+                  <div className="flex gap-2">
+                    <Button variant="secondary" onClick={() => resetPassword(p)}>
+                      Set password
+                    </Button>
+                    {p.id !== myUserId && (
+                      <Button variant="danger" onClick={() => deleteUser(p)}>
+                        Delete
+                      </Button>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
         </TableWrap>
+
+        <form
+          onSubmit={createUser}
+          className="mt-4 border-t border-slate-100 pt-4"
+        >
+          <h3 className="text-sm font-semibold text-slate-700 mb-3">
+            Add user
+          </h3>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <Field label="Username (no email needed)">
+              <input
+                type="text"
+                required
+                autoCapitalize="none"
+                pattern="[A-Za-z0-9._-]{3,32}"
+                title="3-32 characters: letters, numbers, . _ -"
+                value={newUser.username}
+                onChange={(e) =>
+                  setNewUser((u) => ({ ...u, username: e.target.value }))
+                }
+                placeholder="e.g. caretaker"
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Password (min 8 chars)">
+              <input
+                type="text"
+                required
+                minLength={8}
+                value={newUser.password}
+                onChange={(e) =>
+                  setNewUser((u) => ({ ...u, password: e.target.value }))
+                }
+                className={inputCls}
+              />
+            </Field>
+            <Field label="Role">
+              <select
+                value={newUser.role}
+                onChange={(e) =>
+                  setNewUser((u) => ({
+                    ...u,
+                    role: e.target.value as UserRole,
+                  }))
+                }
+                className={inputCls}
+              >
+                <option value="admin">admin — full control</option>
+                <option value="editor">editor — readings only</option>
+                <option value="viewer">viewer — assigned tenants</option>
+              </select>
+            </Field>
+            <div className="flex items-end">
+              <Button type="submit" disabled={creatingUser}>
+                {creatingUser ? "Creating…" : "Create user"}
+              </Button>
+            </div>
+          </div>
+          <p className="text-xs text-slate-400 mt-2">
+            For viewers, tick their visible tenants in the table above after
+            creating the account.
+          </p>
+        </form>
       </Card>
     </div>
   );

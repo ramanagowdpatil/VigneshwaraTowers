@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { displayLogin } from "@/lib/auth";
 import { useRole } from "./RoleProvider";
 import type { UserRole } from "@/lib/types";
 
@@ -45,7 +46,7 @@ export default function Nav() {
           </Link>
           <div className="flex items-center gap-3">
             <span className="text-xs text-slate-500 hidden sm:inline">
-              {fullName} · {role}
+              {displayLogin(fullName)} · {role}
             </span>
             <button
               onClick={signOut}

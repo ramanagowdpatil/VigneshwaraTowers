@@ -3,10 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { loginToEmail } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [login, setLogin] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -17,7 +18,7 @@ export default function LoginPage() {
     setError(null);
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: loginToEmail(login),
       password,
     });
     if (error) {
@@ -45,16 +46,17 @@ export default function LoginPage() {
           className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 space-y-4"
         >
           <div>
-            <label className="block text-sm font-medium mb-1" htmlFor="email">
-              Email
+            <label className="block text-sm font-medium mb-1" htmlFor="login">
+              Username
             </label>
             <input
-              id="email"
-              type="email"
+              id="login"
+              type="text"
               required
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
+              autoCapitalize="none"
+              value={login}
+              onChange={(e) => setLogin(e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
